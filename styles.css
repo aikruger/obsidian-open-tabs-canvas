@@ -1,8 +1,6 @@
-/*
-
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
-
-If your plugin does not need CSS, delete this file.
-
-*/
+/* Highlight active tab card in canvas */
+.canvas-node.is-active-tab .canvas-node-container {
+  border: 3px solid var(--color-primary, #0066cc);
+  background-color: var(--color-accent, rgba(0, 102, 204, 0.1));
+  box-shadow: 0 0 12px var(--color-primary, #0066cc);
+}
