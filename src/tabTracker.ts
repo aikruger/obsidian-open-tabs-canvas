@@ -1,28 +1,23 @@
 import { App, TFile, WorkspaceLeaf } from 'obsidian';
 
-export interface OpenTabInfo {
+export interface TabInfo {
   leaf: WorkspaceLeaf;
-  file: TFile | null;
+  file: TFile;
   displayName: string;
   filePath: string;
   icon: string;
 }
 
-export class TabTracker {
-  private app: App;
+export default class TabTracker {
+  constructor(private app: App) {}
 
-  constructor(app: App) {
-    this.app = app;
-  }
-
-  getAllOpenTabs(): OpenTabInfo[] {
-    const tabs: OpenTabInfo[] = [];
+  getAllOpenTabs(): TabInfo[] {
+    const tabs: TabInfo[] = [];
     this.app.workspace.iterateAllLeaves((leaf) => {
-      // biome-ignore lint/suspicious/noExplicitAny: This is a direct workaround for the Obsidian API that is not yet fully typed.
       const view = leaf.view as any;
       if (view.getViewType() !== 'empty' && view.file) {
         tabs.push({
-          leaf: leaf,
+          leaf,
           file: view.file,
           displayName: leaf.getDisplayText(),
           filePath: view.file.path,
@@ -32,5 +27,4 @@ export class TabTracker {
     });
     return tabs;
   }
-
 }
