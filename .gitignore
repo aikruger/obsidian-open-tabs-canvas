@@ -20,3 +20,9 @@ data.json
 
 # Exclude macOS Finder (System Explorer) View States
 .DS_Store
+
+# Visual Studio artifacts
+.vs/
+
+# Local build logs
+build_log.txt
