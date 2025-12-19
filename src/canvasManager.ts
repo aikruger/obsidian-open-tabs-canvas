@@ -1,8 +1,16 @@
-import { App, TFile } from "obsidian";
+import { App, TFile, Notice as import_obsidian2 } from "obsidian";
 import { TabInfo } from "./tabTracker";
+import { CardInteractionHandler } from './cardInteraction';
+import { TabSyncHandler } from './tabSync';
 
 export default class CanvasManager {
-  constructor(private app: App) {}
+  private cardInteractionHandler: CardInteractionHandler;
+  private tabSyncHandler: TabSyncHandler;
+
+  constructor(private app: App) {
+    this.cardInteractionHandler = new CardInteractionHandler(app);
+    this.tabSyncHandler = new TabSyncHandler(app);
+  }
 
   async createCanvasFromOpenTabs(tabs: TabInfo[]): Promise<TFile | null> {
     if (tabs.length === 0) {
@@ -13,7 +21,7 @@ export default class CanvasManager {
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const fileName = `Open Tabs Canvas - ${timestamp}.canvas`;
 
-    // STEP 1: Create file with COMPLETE empty structure
+    // Step 1: Create empty canvas file
     const emptyStructure = JSON.stringify(
       {
         nodes: [],
@@ -27,111 +35,83 @@ export default class CanvasManager {
     const newFile = await this.app.vault.create(fileName, emptyStructure);
     console.log("[Open Tabs Canvas] Empty canvas file created");
 
-    // STEP 2: Open canvas - DO NOT WAIT YET
-    const leaf = await (this.app.workspace as any).getLeaf(false);
-    await leaf.openFile(newFile);
+    // Step 2: Open canvas in new tab (background - no focus)
+    let leaf: any;
+    try {
+      leaf = (this.app.workspace as any).getLeaf('tab');
+      if (!leaf) {
+        throw new Error('Could not create leaf');
+      }
+      await leaf.openFile(newFile, { active: false } as any);
+      console.log('[Open Tabs Canvas] Canvas opened in new tab');
+    } catch (e) {
+      console.error('[Open Tabs Canvas] Failed to open canvas:', e);
+      new import_obsidian2("Failed to create canvas.");
+      throw e;
+    }
 
-    // STEP 3: CRITICAL - Wait for Canvas plugin to fully initialize
-    await this.waitForCanvasFullyReady(leaf, 3000);
+    // Step 3: Wait for canvas to be ready
+    await this.waitForCanvasFullyReady(leaf, 5000);
 
-    // STEP 4: Generate canvas data
+    // Step 4: Generate canvas data with all tabs as nodes
     const canvasData = this.generateCanvasJSON(tabs);
     console.log(
       "[Open Tabs Canvas] Generated canvas data with nodes:",
       canvasData.nodes.length
     );
 
-    // STEP 5: CRITICAL - Write data while Canvas is NOT actively reading
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
+    // Step 5: Write canvas data to file
+    await new Promise((resolve) => setTimeout(resolve, 800));
     const jsonString = JSON.stringify(canvasData, null, 2);
     await this.app.vault.modify(newFile, jsonString);
     console.log("[Open Tabs Canvas] Data written to file");
 
-    // STEP 6: Force Canvas to reload the file it just modified
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    await this.forceCanvasReload(leaf);
+    // Step 6: Wait for file to save
+    await new Promise((resolve) => setTimeout(resolve, 600));
 
+    // Step 7: Setup interaction handlers
+    this.cardInteractionHandler.setupCardClickListeners(newFile, leaf);
+    this.tabSyncHandler.setupTabSync(leaf);
+
+    console.log(`[Open Tabs Canvas] Interactive features enabled`);
     console.log(`[Open Tabs Canvas] Complete! Canvas has ${tabs.length} nodes`);
+
     return newFile;
   }
 
-  // NEW: Detect when Canvas view has FULLY initialized
   private async waitForCanvasFullyReady(leaf: any, maxWait = 3000): Promise<boolean> {
     const startTime = Date.now();
-
     while (Date.now() - startTime < maxWait) {
       const view = (leaf as any).view;
-
-      // Check for Canvas view with all required properties
-      if (
-        view &&
-        (view as any).canvas &&
-        (view as any).canvas.data !== undefined &&
-        (view as any).data !== undefined &&
-        typeof (view as any).updateData === 'function'
-      ) {
-        console.log("[Open Tabs Canvas] Canvas view fully initialized");
-        await new Promise((resolve) => setTimeout(resolve, 300));
+      if (view && (view as any).canvas) {
+        const nodes = (view as any).canvas.nodes;
+        if (nodes && nodes.size > 0) {
+          console.log(`[Open Tabs Canvas] Canvas ready with ${nodes.size} nodes`);
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          return true;
+        }
+        // Consider canvas ready when exists even if nodes not yet populated
+        console.log('[Open Tabs Canvas] Canvas view detected');
         return true;
       }
-
       await new Promise((resolve) => setTimeout(resolve, 150));
     }
-
     console.warn("[Open Tabs Canvas] Timeout waiting for Canvas initialization");
     return false;
-  }
-
-  // NEW: Force Canvas to reread and rerender
-  private async forceCanvasReload(leaf: any): Promise<void> {
-    const view = (leaf as any).view;
-
-    if (!view || !(view as any).canvas) {
-      console.error("[Open Tabs Canvas] Canvas view not available for reload");
-      return;
-    }
-
-    try {
-      // Method 1: Call Canvas's internal load method
-      if (typeof (view as any).load === 'function') {
-        console.log("[Open Tabs Canvas] Triggering Canvas.load()");
-        await (view as any).load();
-        await new Promise((resolve) => setTimeout(resolve, 200));
-        return;
-      }
-    } catch (e) {
-      console.warn("[Open Tabs Canvas] Canvas.load() not available:", e);
-    }
-
-    try {
-      // Method 2: Trigger data update
-      if ((view as any).data && typeof (view as any).updateData === 'function') {
-        console.log("[Open Tabs Canvas] Triggering Canvas.updateData()");
-        await (view as any).updateData((view as any).data);
-        await new Promise((resolve) => setTimeout(resolve, 200));
-        return;
-      }
-    } catch (e) {
-      console.warn("[Open Tabs Canvas] updateData() failed:", e);
-    }
-
-    // Method 3: Nuclear option - close and reopen
-    console.log("[Open Tabs Canvas] Using nuclear reload: close and reopen");
-    const file = (view as any).file;
-    await leaf.detach();
-    await new Promise((resolve) => setTimeout(resolve, 300));
-
-    const newLeaf = await (this.app.workspace as any).getLeaf(false);
-    await newLeaf.openFile(file);
-    await this.waitForCanvasFullyReady(newLeaf, 2000);
   }
 
   private generateCanvasJSON(tabs: TabInfo[]) {
     const nodes: any[] = [];
     const positions = this.calculateMosaicPositions(tabs.length);
 
+    console.log("[DEBUG] Tabs to process:", tabs.length);
+
     tabs.forEach((tab, index) => {
+      console.log(`[DEBUG] Tab ${index}:`, {
+        file: tab.file,
+        path: tab.file?.path,
+        displayName: tab.displayName,
+      });
       if (tab.file && tab.file.path) {
         const node = {
           id: this.generateUUID(),
@@ -142,11 +122,15 @@ export default class CanvasManager {
           width: 250,
           height: 250,
         };
+        console.log(`[DEBUG] Created node ${index}:`, node);
         nodes.push(node);
+      } else {
+        console.warn(`[DEBUG] Skipped tab ${index} - no file path`);
       }
     });
 
-    // CRITICAL: Complete Canvas metadata structure
+    console.log("[DEBUG] Total nodes created:", nodes.length);
+
     return {
       nodes,
       edges: [],
@@ -165,7 +149,6 @@ export default class CanvasManager {
   ) {
     const positions: { x: number; y: number }[] = [];
     const columnsPerRow = Math.ceil(Math.sqrt(cardCount));
-
     for (let i = 0; i < cardCount; i++) {
       const row = Math.floor(i / columnsPerRow);
       const col = i % columnsPerRow;
@@ -173,7 +156,6 @@ export default class CanvasManager {
       const y = row * (cardHeight + spacing);
       positions.push({ x, y });
     }
-
     return positions;
   }
 

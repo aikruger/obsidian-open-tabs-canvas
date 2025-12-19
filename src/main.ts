@@ -36,6 +36,10 @@ export default class OpenTabsCanvasPlugin extends Plugin {
 	}
 
 	onunload() {
+		// Cleanup interactive handlers
+		(this.canvasManager as any).cardInteractionHandler?.cleanup();
+		(this.canvasManager as any).tabSyncHandler?.cleanup();
+
 		console.log("[Open Tabs Canvas] Plugin unloaded");
 	}
 }
