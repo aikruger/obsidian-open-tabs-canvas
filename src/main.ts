@@ -4,15 +4,21 @@ import CanvasManager from "./canvasManager";
 import { OpenTabsCanvasSettingTab, OpenTabsCanvasSettings, DEFAULT_SETTINGS } from './settings';
 import { DragDropHandler } from './dragDropHandler';
 import { CanvasContextMenuHandler } from './canvasContextMenu';
+import { CanvasSelectorModal } from './canvasSelector';
+import { CanvasInfoTracker } from './canvasInfo';
 
 
 export default class OpenTabsCanvasPlugin extends Plugin {
 	settings: OpenTabsCanvasSettings;
 	private tabTracker!: TabTracker;
 	private canvasManager!: CanvasManager;
+	private canvasInfoTracker!: CanvasInfoTracker;
 
 	async onload() {
 		await this.loadSettings();
+
+		// NEW: Initialize canvas info tracker
+		this.canvasInfoTracker = new CanvasInfoTracker(this.app);
 
 		this.tabTracker = new TabTracker(this.app);
 		this.canvasManager = new CanvasManager(this.app, this);
@@ -42,6 +48,53 @@ export default class OpenTabsCanvasPlugin extends Plugin {
 		// Register settings tab (shows up in Obsidian settings)
 		this.addSettingTab(new OpenTabsCanvasSettingTab(this.app, this));
 
+		// Add command to send open tab to canvas
+		this.addCommand({
+			id: 'send-tab-to-canvas',
+			name: 'Add current file to canvas...',
+			callback: async () => {
+				const activeLeaf = this.app.workspace.activeLeaf;
+
+				if (!activeLeaf || !activeLeaf.view || !(activeLeaf.view as any).file) {
+					new Notice('No file currently open');
+					return;
+				}
+
+				const currentFile = (activeLeaf.view as any).file;
+
+				// Skip if trying to add canvas to canvas
+				if (currentFile.extension === 'canvas') {
+					new Notice('Cannot add canvas files to canvas');
+					return;
+				}
+
+				// Get all canvases
+				const canvases = this.canvasInfoTracker.getAllCanvases();
+
+				if (canvases.length === 0) {
+					new Notice('No canvases found. Create one first.');
+					return;
+				}
+
+				// Show modal to select canvas
+				const modal = new CanvasSelectorModal(
+					this.app,
+					currentFile,
+					canvases.map(c => ({
+						file: c.file,
+						name: c.file.basename,
+						lastModified: c.lastModified,
+						lastFocusPoint: c.lastFocusPoint,
+					})),
+					async (selectedCanvas) => {
+						await this.addFileToCanvas(currentFile, selectedCanvas.file, selectedCanvas.lastFocusPoint);
+					}
+				);
+
+				modal.open();
+			}
+		});
+
 		// NEW: Listen for any canvas file being opened
 		// This enables interactive features on ALL canvases, not just ones created by the plugin
 		this.registerEvent(
@@ -63,6 +116,72 @@ export default class OpenTabsCanvasPlugin extends Plugin {
 		(this.canvasManager as any).tabSyncHandler?.cleanup();
 
 		console.log("[Open Tabs Canvas] Plugin unloaded");
+	}
+
+	/**
+	 * Add a file to a canvas at a specific position
+	 */
+	private async addFileToCanvas(
+		file: TFile,
+		canvasFile: TFile,
+		focusPoint: { x: number; y: number } | null
+	): Promise<void> {
+		try {
+			// Get last focus point or use default
+			const position = focusPoint || this.canvasInfoTracker.getLastFocusPoint(canvasFile.path);
+
+			// Read existing canvas
+			const content = await this.app.vault.read(canvasFile);
+			const canvasData = JSON.parse(content);
+
+			if (!canvasData.nodes) {
+				canvasData.nodes = [];
+			}
+
+			// Create new node
+			const newNode = {
+				id: this.generateUUID(),
+				type: 'file',
+				file: file.path,
+				x: position.x,
+				y: position.y,
+				width: this.settings.cardSize,
+				height: this.settings.cardSize,
+			};
+
+			canvasData.nodes.push(newNode);
+
+			// Ensure metadata exists
+			if (!canvasData.metadata) {
+				canvasData.metadata = { version: '1.0', frontmatter: {} };
+			}
+
+			// Write updated canvas
+			const updatedContent = JSON.stringify(canvasData, null, 2);
+			await this.app.vault.modify(canvasFile, updatedContent);
+
+			new Notice(`Added "${file.basename}" to canvas`);
+			console.log(`[Tabs to Canvas] Added file to canvas:`, file.path);
+
+			// Optionally bring canvas to focus
+			const leaves = this.app.workspace.getLeavesOfType('canvas');
+			const canvasLeaf = leaves.find(l => (l.view as any)?.file?.path === canvasFile.path);
+			if (canvasLeaf) {
+				this.app.workspace.setActiveLeaf(canvasLeaf, { focus: true });
+			}
+
+		} catch (error) {
+			console.error('[Tabs to Canvas] Error adding file to canvas:', error);
+			new Notice('Failed to add file to canvas. Check console for details.');
+		}
+	}
+
+	private generateUUID(): string {
+		return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+			const r = Math.random() * 16 | 0;
+			const v = c === 'x' ? r : (r & 3 | 8);
+			return v.toString(16);
+		});
 	}
 
 	async loadSettings() {

@@ -12,6 +12,7 @@ export interface OpenTabsCanvasSettings {
   showNavigationHints: boolean;            // "Alt + Double-click" tooltip
   enableDragDropToCanvas: boolean;        // Alt+Drag to add cards
   enableBatchOperations: boolean;         // Right-click context menu
+  enableSendTabToCanvas: boolean;
 
   // Layout settings (used when creating new canvases)
   cardSize: number;                       // Card width/height in pixels
@@ -28,7 +29,8 @@ export const DEFAULT_SETTINGS: OpenTabsCanvasSettings = {
   enableHighlighting: true,               // Important for UX
   showNavigationHints: true,              // Helps users discover feature
   enableDragDropToCanvas: true,           // Powerful workflow
-  enableBatchOperations: true             // Useful for power users
+  enableBatchOperations: true,             // Useful for power users
+  enableSendTabToCanvas: true,
 };
 
 /**
@@ -68,6 +70,18 @@ export class OpenTabsCanvasSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.autoActivateOnAllCanvases)
           .onChange(async (value) => {
             this.plugin.settings.autoActivateOnAllCanvases = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Enable "Add to canvas" hotkey')
+      .setDesc('Show modal to add current file to any canvas')
+      .addToggle(toggle =>
+        toggle
+          .setValue(this.plugin.settings.enableSendTabToCanvas)
+          .onChange(async (value) => {
+            this.plugin.settings.enableSendTabToCanvas = value;
             await this.plugin.saveSettings();
           })
       );
