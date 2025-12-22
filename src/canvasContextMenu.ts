@@ -257,47 +257,51 @@ Selected: ${selectedFileNodes.length}
    * 2. Show notice with count
    * 3. Handle errors gracefully (one failure doesn't block others)
    */
-  private async openFilesInBackground(
-    fileNodes: Array<{ file: TFile; nodeView: any }>
-  ): Promise<void> {
+  async openFilesInBackground(fileNodes: Array<{ file: TFile; nodeView: any }>) {
     const workspace = this.app.workspace;
     let successCount = 0;
 
-    for (const { file } of fileNodes) {
+    // Show progress for >5 files
+    let progressNotice: Notice | null = null;
+    if (fileNodes.length > 5) {
+      progressNotice = new Notice(`Opening 0/${fileNodes.length} files...`, 0);
+    }
+
+    for (let i = 0; i < fileNodes.length; i++) {
+      const { file } = fileNodes[i];
+
       try {
-        // Check if file is already open
         const existingLeaves = workspace.getLeavesOfType('markdown');
         const existingLeaf = existingLeaves.find(
           (leaf) => (leaf.view as any)?.file?.path === file.path
         );
 
-        // Skip if already open
         if (existingLeaf) {
-          console.log(
-            `[Open Tabs Canvas] File already open, skipping: ${file.path}`
-          );
+          console.log(`[Tabs to Canvas] File already open, skipping: ${file.path}`);
           continue;
         }
 
-        // Open in background (active: false means don't switch focus)
         const newLeaf = workspace.getLeaf('tab');
         await newLeaf.openFile(file, { active: false });
         successCount++;
 
-        console.log(`[Open Tabs Canvas] ✓ Opened: ${file.path}`);
+        // Update progress
+        if (progressNotice) {
+          progressNotice.setMessage(`Opening ${successCount}/${fileNodes.length} files...`);
+        }
 
+        console.log(`[Tabs to Canvas] ✓ Opened: ${file.path}`);
       } catch (error) {
-        console.error(
-          `[Open Tabs Canvas] Error opening ${file.path}:`,
-          error
-        );
-        // Continue with next file instead of stopping
+        console.error(`[Tabs to Canvas] Error opening ${file.path}:`, error);
       }
     }
 
-    console.log(
-      `[Open Tabs Canvas] Batch operation complete: ${successCount} files opened`
-    );
+    if (progressNotice) {
+      progressNotice.hide();
+    }
+
+    new Notice(`Opened ${successCount}/${fileNodes.length} files in background`);
+    console.log(`[Tabs to Canvas] Batch operation complete: ${successCount} files opened`);
   }
 
   /**
