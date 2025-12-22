@@ -2,12 +2,14 @@ import { App, TFile, Notice as import_obsidian2 } from "obsidian";
 import { TabInfo } from "./tabTracker";
 import { CardInteractionHandler } from './cardInteraction';
 import { TabSyncHandler } from './tabSync';
+import { DragDropHandler } from './dragDropHandler';
+import OpenTabsCanvasPlugin from "./main";
 
 export default class CanvasManager {
-  private cardInteractionHandler: CardInteractionHandler;
-  private tabSyncHandler: TabSyncHandler;
+  cardInteractionHandler: CardInteractionHandler;
+  tabSyncHandler: TabSyncHandler;
 
-  constructor(private app: App) {
+  constructor(private app: App, private plugin: OpenTabsCanvasPlugin) {
     this.cardInteractionHandler = new CardInteractionHandler(app);
     this.tabSyncHandler = new TabSyncHandler(app);
   }
@@ -72,6 +74,10 @@ export default class CanvasManager {
     // Step 7: Setup interaction handlers
     this.cardInteractionHandler.setupCardClickListeners(newFile, leaf);
     this.tabSyncHandler.setupTabSync(leaf);
+
+    // Initialize drag-drop handler
+    const dragDropHandler = new DragDropHandler(this.app, this.plugin);
+    dragDropHandler.setupTabDragDropListener(newFile, leaf);
 
     console.log(`[Open Tabs Canvas] Interactive features enabled`);
     console.log(`[Open Tabs Canvas] Complete! Canvas has ${tabs.length} nodes`);
