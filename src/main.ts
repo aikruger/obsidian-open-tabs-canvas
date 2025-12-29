@@ -1,4 +1,5 @@
-import { Plugin, Notice, TFile } from "obsidian";
+import { Plugin, Notice, TFile, View, CanvasView } from "obsidian";
+
 import TabTracker from "./tabTracker";
 import CanvasManager from "./canvasManager";
 import { OpenTabsCanvasSettingTab, OpenTabsCanvasSettings, DEFAULT_SETTINGS } from './settings';
@@ -98,14 +99,119 @@ export default class OpenTabsCanvasPlugin extends Plugin {
 		// NEW: Listen for any canvas file being opened
 		// This enables interactive features on ALL canvases, not just ones created by the plugin
 		this.registerEvent(
-		  this.app.workspace.on('file-open', (file) => {
-			// Check if the opened file is a canvas
-			if (file && file.extension === 'canvas' && this.settings.autoActivateOnAllCanvases) {
-			  // Run the auto-activation check
-			  this.reactivateCanvasIfNeeded(file);
-			}
-		  })
+			this.app.workspace.on('file-open', (file) => {
+				// Check if the opened file is a canvas
+				if (file && file.extension === 'canvas' && this.settings.autoActivateOnAllCanvases) {
+					// Run the auto-activation check
+					this.reactivateCanvasIfNeeded(file);
+				}
+			})
 		);
+
+		// ============================================================
+		// CANVAS BATCH OPERATIONS COMMANDS
+		// ============================================================
+
+		this.addCommand({
+			id: "canvas-open-all-files",
+			name: "Canvas: Open all files in background",
+			callback: async () => {
+				const activeLeaf = this.app.workspace.activeLeaf;
+				
+				// Check if canvas is open
+				if (!activeLeaf?.view || activeLeaf.view.getViewType() !== "canvas") {
+					new Notice("No canvas currently open. Open a canvas first.");
+					return;
+				}
+				
+				const canvas = (activeLeaf.view as CanvasView).canvas;
+				if (!canvas) {
+					new Notice("Canvas not initialized");
+					return;
+				}
+				
+				const handler = new CanvasContextMenuHandler(this.app, this);
+				const allFiles = handler.getAllFileNodes(canvas);
+				
+				if (allFiles.length === 0) {
+					new Notice("No file cards found in this canvas");
+					return;
+				}
+				
+				try {
+					await handler.openFilesInBackground(allFiles);
+					new Notice(`✓ Opened ${allFiles.length} files in background`);
+					console.log(`[Open Tabs Canvas] Opened ${allFiles.length} files`);
+				} catch (error) {
+					console.error("[Open Tabs Canvas] Error opening files:", error);
+					new Notice("Error opening files. Check console for details.");
+				}
+			}
+		});
+
+		this.addCommand({
+			id: "canvas-open-selected-files",
+			name: "Canvas: Open selected files in background",
+			callback: async () => {
+				const activeLeaf = this.app.workspace.activeLeaf;
+				
+				// Check if canvas is open
+				if (!activeLeaf?.view || activeLeaf.view.getViewType() !== "canvas") {
+					new Notice("No canvas currently open. Open a canvas first.");
+					return;
+				}
+				
+				const canvas = (activeLeaf.view as CanvasView).canvas;
+				if (!canvas) {
+					new Notice("Canvas not initialized");
+					return;
+				}
+				
+				const handler = new CanvasContextMenuHandler(this.app, this);
+				const selectedFiles = handler.getSelectedFileNodes(canvas);
+				
+				if (selectedFiles.length === 0) {
+					new Notice("No files selected. Select cards first by clicking them.");
+					return;
+				}
+				
+				try {
+					await handler.openFilesInBackground(selectedFiles);
+					new Notice(`✓ Opened ${selectedFiles.length} selected files in background`);
+					console.log(`[Open Tabs Canvas] Opened ${selectedFiles.length} selected files`);
+				} catch (error) {
+					console.error("[Open Tabs Canvas] Error opening files:", error);
+					new Notice("Error opening files. Check console for details.");
+				}
+			}
+		});
+
+		this.addCommand({
+			id: "canvas-show-info",
+			name: "Canvas: Show canvas info",
+			callback: () => {
+				const activeLeaf = this.app.workspace.activeLeaf;
+				
+				if (!activeLeaf?.view || activeLeaf.view.getViewType() !== "canvas") {
+					new Notice("No canvas currently open");
+					return;
+				}
+				
+				const canvas = (activeLeaf.view as CanvasView).canvas;
+				const handler = new CanvasContextMenuHandler(this.app, this);
+				const allFiles = handler.getAllFileNodes(canvas);
+				const selectedFiles = handler.getSelectedFileNodes(canvas);
+				
+				const info = `
+Canvas: ${(activeLeaf.view as any).file?.basename || "Unknown"}
+Total file cards: ${allFiles.length}
+Selected cards: ${selectedFiles.length}
+				`.trim();
+				
+				new Notice(info);
+				console.log(`[Open Tabs Canvas] Canvas Info: ${info}`);
+			}
+		});
 
 		console.log("[Open Tabs Canvas] Plugin loaded with universal canvas support");
 	}
@@ -263,7 +369,7 @@ export default class OpenTabsCanvasPlugin extends Plugin {
 			dragDropHandler.setupTabDragDropListener(canvasFile, targetLeaf);
 
 			// NEW: Context menu
-			const contextMenuHandler = new CanvasContextMenuHandler(this.app);
+			const contextMenuHandler = new CanvasContextMenuHandler(this.app, this);
 			contextMenuHandler.setupCanvasContextMenu(canvasFile, targetLeaf);
 
 			console.log(

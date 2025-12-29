@@ -107,7 +107,7 @@ export class CanvasInfoTracker {
    * Get all canvas files with their info
    */
   getAllCanvases(): Array<{ file: TFile; lastModified: number; lastFocusPoint: { x: number; y: number } | null }> {
-    const allFiles = this.app.vault.getMarkdownFiles()
+    const allFiles = this.app.vault.getFiles()
       .filter((f) => f.extension === 'canvas') as TFile[];
 
     return allFiles.map((file) => {

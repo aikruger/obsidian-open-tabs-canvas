@@ -15,9 +15,11 @@ import { App, TFile, Notice, Menu } from 'obsidian';
  */
 export class CanvasContextMenuHandler {
   private app: App;
+  private plugin: any;
 
-  constructor(app: App) {
+  constructor(app: App, plugin: any) {
     this.app = app;
+    this.plugin = plugin;
   }
 
   /**
@@ -30,6 +32,12 @@ export class CanvasContextMenuHandler {
    * 4. Show menu at click position
    */
   setupCanvasContextMenu(canvasFile: TFile, leaf: any) {
+    // ✅ ADD THIS:
+    if (!this.plugin || !this.plugin.settings.enableBatchOperations) {
+      console.log("[Open Tabs Canvas] Batch operations disabled in settings");
+      return;
+    }
+
     const canvasView = leaf.view;
     if (!canvasView?.canvas?.containerEl) {
       console.warn('[Open Tabs Canvas] Canvas container not found');
@@ -135,16 +143,7 @@ Selected: ${selectedFileNodes.length}
     );
   }
 
-  /**
-   * Get ALL file-type nodes from the canvas
-   *
-   * LOGIC:
-   * 1. Iterate through all canvas nodes
-   * 2. Extract file path from each node
-   * 3. Verify file exists in vault
-   * 4. Return array of valid file nodes
-   */
-  private getAllFileNodes(
+  public getAllFileNodes(
     canvas: any
   ): Array<{ file: TFile; nodeView: any }> {
     const fileNodes: Array<{ file: TFile; nodeView: any }> = [];
@@ -174,18 +173,7 @@ Selected: ${selectedFileNodes.length}
     return fileNodes;
   }
 
-  /**
-   * Get SELECTED file nodes from the canvas
-   *
-   * HOW SELECTION WORKS:
-   * - Canvas applies "is-selected" CSS class to selected nodes
-   * - We check for this class on each node element
-   * - Only return file-type nodes that are selected
-   *
-   * NOTE:
-   * If Obsidian changes the selection class name, update 'is-selected' here
-   */
-  private getSelectedFileNodes(
+  public getSelectedFileNodes(
     canvas: any
   ): Array<{ file: TFile; nodeView: any }> {
     const selectedNodes: Array<{ file: TFile; nodeView: any }> = [];

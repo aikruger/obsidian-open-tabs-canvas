@@ -3,6 +3,7 @@ import { TabInfo } from "./tabTracker";
 import { CardInteractionHandler } from './cardInteraction';
 import { TabSyncHandler } from './tabSync';
 import { DragDropHandler } from './dragDropHandler';
+import { CanvasContextMenuHandler } from './canvasContextMenu';
 import OpenTabsCanvasPlugin from "./main";
 
 export default class CanvasManager {
@@ -78,6 +79,9 @@ export default class CanvasManager {
     // Initialize drag-drop handler
     const dragDropHandler = new DragDropHandler(this.app, this.plugin);
     dragDropHandler.setupTabDragDropListener(newFile, leaf);
+
+    const contextMenuHandler = new CanvasContextMenuHandler(this.app, this);
+    contextMenuHandler.setupCanvasContextMenu(newFile, leaf);
 
     console.log(`[Open Tabs Canvas] Interactive features enabled`);
     console.log(`[Open Tabs Canvas] Complete! Canvas has ${tabs.length} nodes`);
