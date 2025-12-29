@@ -3,7 +3,6 @@ import { Plugin, Notice, TFile, View, CanvasView } from "obsidian";
 import TabTracker from "./tabTracker";
 import CanvasManager from "./canvasManager";
 import { OpenTabsCanvasSettingTab, OpenTabsCanvasSettings, DEFAULT_SETTINGS } from './settings';
-import { DragDropHandler } from './dragDropHandler';
 import { CanvasContextMenuHandler } from './canvasContextMenu';
 import { CanvasSelectorModal } from './canvasSelector';
 import { CanvasInfoTracker } from './canvasInfo';
@@ -93,6 +92,22 @@ export default class OpenTabsCanvasPlugin extends Plugin {
 				);
 
 				modal.open();
+			}
+		});
+
+		this.addCommand({
+			id: 'canvas-scan-open-tabs',
+			name: 'Canvas: Scan and highlight all open tabs',
+			callback: async () => {
+				const activeLeaf = this.app.workspace.activeLeaf;
+				if (!activeLeaf?.view || activeLeaf.view.getViewType() !== 'canvas') {
+					new Notice('No canvas currently open');
+					return;
+				}
+
+				// Trigger scan
+				this.canvasManager.tabScanHandler?.scanOpenTabs();
+				new Notice('Canvas scanned - background tabs highlighted');
 			}
 		});
 
@@ -363,10 +378,6 @@ Selected cards: ${selectedFiles.length}
 
 			// Activate tab sync (active file highlighting)
 			this.canvasManager.tabSyncHandler.setupTabSync(targetLeaf);
-
-			// NEW: Drag-drop setup
-			const dragDropHandler = new DragDropHandler(this.app, this);
-			dragDropHandler.setupTabDragDropListener(canvasFile, targetLeaf);
 
 			// NEW: Context menu
 			const contextMenuHandler = new CanvasContextMenuHandler(this.app, this);

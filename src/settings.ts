@@ -10,7 +10,6 @@ export interface OpenTabsCanvasSettings {
   autoActivateOnAllCanvases: boolean;    // Auto-enable on any canvas open
   enableHighlighting: boolean;            // Active tab glow effect
   showNavigationHints: boolean;            // "Alt + Double-click" tooltip
-  enableDragDropToCanvas: boolean;        // Alt+Drag to add cards
   enableBatchOperations: boolean;         // Right-click context menu
   enableSendTabToCanvas: boolean;
 
@@ -28,7 +27,6 @@ export const DEFAULT_SETTINGS: OpenTabsCanvasSettings = {
   cardSpacing: 50,                        // Matches existing default
   enableHighlighting: true,               // Important for UX
   showNavigationHints: true,              // Helps users discover feature
-  enableDragDropToCanvas: true,           // Powerful workflow
   enableBatchOperations: true,             // Useful for power users
   enableSendTabToCanvas: true,
 };
@@ -111,20 +109,6 @@ export class OpenTabsCanvasSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.showNavigationHints)
           .onChange(async (value) => {
             this.plugin.settings.showNavigationHints = value;
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName('Enable tab drag-drop to canvas')
-      .setDesc(
-        'Hold Alt and drag open tabs onto canvas to create new file cards'
-      )
-      .addToggle(toggle =>
-        toggle
-          .setValue(this.plugin.settings.enableDragDropToCanvas)
-          .onChange(async (value) => {
-            this.plugin.settings.enableDragDropToCanvas = value;
             await this.plugin.saveSettings();
           })
       );

@@ -2,17 +2,19 @@ import { App, TFile, Notice as import_obsidian2 } from "obsidian";
 import { TabInfo } from "./tabTracker";
 import { CardInteractionHandler } from './cardInteraction';
 import { TabSyncHandler } from './tabSync';
-import { DragDropHandler } from './dragDropHandler';
+import { TabScanHandler } from './tabScanHandler';
 import { CanvasContextMenuHandler } from './canvasContextMenu';
 import OpenTabsCanvasPlugin from "./main";
 
 export default class CanvasManager {
   cardInteractionHandler: CardInteractionHandler;
   tabSyncHandler: TabSyncHandler;
+  tabScanHandler: TabScanHandler;
 
   constructor(private app: App, private plugin: OpenTabsCanvasPlugin) {
     this.cardInteractionHandler = new CardInteractionHandler(app);
-    this.tabSyncHandler = new TabSyncHandler(app);
+    this.tabScanHandler = new TabScanHandler(app);
+    this.tabSyncHandler = new TabSyncHandler(app, this.tabScanHandler);
   }
 
   async createCanvasFromOpenTabs(tabs: TabInfo[]): Promise<TFile | null> {
@@ -75,10 +77,6 @@ export default class CanvasManager {
     // Step 7: Setup interaction handlers
     this.cardInteractionHandler.setupCardClickListeners(newFile, leaf);
     this.tabSyncHandler.setupTabSync(leaf);
-
-    // Initialize drag-drop handler
-    const dragDropHandler = new DragDropHandler(this.app, this.plugin);
-    dragDropHandler.setupTabDragDropListener(newFile, leaf);
 
     const contextMenuHandler = new CanvasContextMenuHandler(this.app, this);
     contextMenuHandler.setupCanvasContextMenu(newFile, leaf);
