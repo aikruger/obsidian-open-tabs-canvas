@@ -1,9 +1,8 @@
-import { Plugin, Notice, TFile, View, CanvasView } from "obsidian";
+import { Plugin, Notice, TFile, CanvasView } from "obsidian";
 
 import TabTracker from "./tabTracker";
 import CanvasManager from "./canvasManager";
 import { OpenTabsCanvasSettingTab, OpenTabsCanvasSettings, DEFAULT_SETTINGS } from './settings';
-import { DragDropHandler } from './dragDropHandler';
 import { CanvasContextMenuHandler } from './canvasContextMenu';
 import { CanvasSelectorModal } from './canvasSelector';
 import { CanvasInfoTracker } from './canvasInfo';
@@ -93,6 +92,22 @@ export default class OpenTabsCanvasPlugin extends Plugin {
 				);
 
 				modal.open();
+			}
+		});
+
+		this.addCommand({
+			id: 'canvas-scan-open-tabs',
+			name: 'Canvas: Scan and highlight all open tabs',
+			callback: async () => {
+				const activeLeaf = this.app.workspace.activeLeaf;
+				if (!activeLeaf?.view || activeLeaf.view.getViewType() !== 'canvas') {
+					new Notice('No canvas currently open');
+					return;
+				}
+
+				// Trigger scan
+				this.canvasManager.tabScanHandler?.scanOpenTabs();
+				new Notice('Canvas scanned - background tabs highlighted');
 			}
 		});
 
@@ -211,6 +226,122 @@ Selected cards: ${selectedFiles.length}
 				new Notice(info);
 				console.log(`[Open Tabs Canvas] Canvas Info: ${info}`);
 			}
+		});
+
+		// NEW COMMAND: Copy all cards as wikilinks
+		this.addCommand({
+			id: "canvas-copy-all-wikilinks",
+			name: "Canvas: Copy all file cards as wikilinks",
+			callback: async () => {
+				const activeLeaf = this.app.workspace.activeLeaf;
+				if (!activeLeaf?.view || activeLeaf.view.getViewType() !== "canvas") {
+					new Notice("No canvas currently open. Open a canvas first.");
+					return;
+				}
+
+				try {
+					const handler = new CanvasContextMenuHandler(this.app, this);
+					const canvas = (activeLeaf.view as CanvasView).canvas;
+					
+					if (!canvas) {
+						new Notice("Canvas not initialized");
+						return;
+					}
+
+					const allFiles = handler.getAllFileNodes(canvas);
+					
+					if (allFiles.length === 0) {
+						new Notice("No file cards found in this canvas");
+						return;
+					}
+
+					await handler.copyCardsAsWikilinks(allFiles, false);
+					console.log(
+						`[Open Tabs Canvas] Copied ${allFiles.length} wikilinks via command`
+					);
+				} catch (error) {
+					console.error("[Open Tabs Canvas] Error copying wikilinks:", error);
+					new Notice("Error copying wikilinks. Check console for details.");
+				}
+			},
+		});
+
+		// NEW COMMAND: Copy selected cards as wikilinks
+		this.addCommand({
+			id: "canvas-copy-selected-wikilinks",
+			name: "Canvas: Copy selected file cards as wikilinks",
+			callback: async () => {
+				const activeLeaf = this.app.workspace.activeLeaf;
+				if (!activeLeaf?.view || activeLeaf.view.getViewType() !== "canvas") {
+					new Notice("No canvas currently open. Open a canvas first.");
+					return;
+				}
+
+				try {
+					const handler = new CanvasContextMenuHandler(this.app, this);
+					const canvas = (activeLeaf.view as CanvasView).canvas;
+					
+					if (!canvas) {
+						new Notice("Canvas not initialized");
+						return;
+					}
+
+					const selectedFiles = handler.getSelectedFileNodes(canvas);
+					
+					if (selectedFiles.length === 0) {
+						new Notice(
+							"No files selected. Click cards to select them (Ctrl/Cmd+Click for multiple)"
+						);
+						return;
+					}
+
+					await handler.copyCardsAsWikilinks(selectedFiles, false);
+					console.log(
+						`[Open Tabs Canvas] Copied ${selectedFiles.length} selected wikilinks via command`
+					);
+				} catch (error) {
+					console.error("[Open Tabs Canvas] Error copying wikilinks:", error);
+					new Notice("Error copying wikilinks. Check console for details.");
+				}
+			},
+		});
+
+		// NEW COMMAND: Copy all cards as vault links
+		this.addCommand({
+			id: "canvas-copy-all-vault-links",
+			name: "Canvas: Copy all file cards as vault links (with paths)",
+			callback: async () => {
+				const activeLeaf = this.app.workspace.activeLeaf;
+				if (!activeLeaf?.view || activeLeaf.view.getViewType() !== "canvas") {
+					new Notice("No canvas currently open. Open a canvas first.");
+					return;
+				}
+
+				try {
+					const handler = new CanvasContextMenuHandler(this.app, this);
+					const canvas = (activeLeaf.view as CanvasView).canvas;
+					
+					if (!canvas) {
+						new Notice("Canvas not initialized");
+						return;
+					}
+
+					const allFiles = handler.getAllFileNodes(canvas);
+					
+					if (allFiles.length === 0) {
+						new Notice("No file cards found in this canvas");
+						return;
+					}
+
+					await handler.copyCardsAsVaultLinks(allFiles);
+					console.log(
+						`[Open Tabs Canvas] Copied ${allFiles.length} vault links via command`
+					);
+				} catch (error) {
+					console.error("[Open Tabs Canvas] Error copying vault links:", error);
+					new Notice("Error copying vault links. Check console for details.");
+				}
+			},
 		});
 
 		console.log("[Open Tabs Canvas] Plugin loaded with universal canvas support");
@@ -363,10 +494,6 @@ Selected cards: ${selectedFiles.length}
 
 			// Activate tab sync (active file highlighting)
 			this.canvasManager.tabSyncHandler.setupTabSync(targetLeaf);
-
-			// NEW: Drag-drop setup
-			const dragDropHandler = new DragDropHandler(this.app, this);
-			dragDropHandler.setupTabDragDropListener(canvasFile, targetLeaf);
 
 			// NEW: Context menu
 			const contextMenuHandler = new CanvasContextMenuHandler(this.app, this);

@@ -1,4 +1,5 @@
 import { App, EventRef } from 'obsidian';
+import { TabScanHandler } from './tabScanHandler';
 
 export class TabSyncHandler {
   private app: App;
@@ -6,9 +7,11 @@ export class TabSyncHandler {
   private activeFileMap: Map<string, any> = new Map();
   private eventRef: EventRef | null = null;
   private hasRetriedBuildingMap: boolean = false; // retry guard
+  private tabScanHandler: TabScanHandler;
 
-  constructor(app: App) {
+  constructor(app: App, tabScanHandler: TabScanHandler) {
     this.app = app;
+    this.tabScanHandler = tabScanHandler;
   }
 
   /**
@@ -23,8 +26,14 @@ export class TabSyncHandler {
       return;
     }
 
+    // Initialize scan handler
+    this.tabScanHandler.setupTabChangeListeners(this.canvasView);
+
     // Build initial file-to-node mapping
     this.buildFileNodeMap();
+
+    // NEW: Perform initial scan
+    this.tabScanHandler.scanOpenTabs();
 
     // Listen for active leaf changes
     this.setupActiveLeafListener();
@@ -102,6 +111,9 @@ export class TabSyncHandler {
     // Setup listener using Obsidian's event system
     this.eventRef = this.app.workspace.on('active-leaf-change', () => {
       this.updateActiveHighlight();
+
+      // NEW: Re-scan to update background tab status
+      this.tabScanHandler.scanOpenTabs();
     });
 
     // Initial highlight

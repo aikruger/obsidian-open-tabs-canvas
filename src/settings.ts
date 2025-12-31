@@ -10,13 +10,13 @@ export interface OpenTabsCanvasSettings {
   autoActivateOnAllCanvases: boolean;    // Auto-enable on any canvas open
   enableHighlighting: boolean;            // Active tab glow effect
   showNavigationHints: boolean;            // "Alt + Double-click" tooltip
-  enableDragDropToCanvas: boolean;        // Alt+Drag to add cards
   enableBatchOperations: boolean;         // Right-click context menu
   enableSendTabToCanvas: boolean;
 
   // Layout settings (used when creating new canvases)
   cardSize: number;                       // Card width/height in pixels
   cardSpacing: number;                    // Gap between cards in pixels
+  canvasOutputFolder: string;             // Default folder for new canvases
 }
 
 /**
@@ -28,9 +28,9 @@ export const DEFAULT_SETTINGS: OpenTabsCanvasSettings = {
   cardSpacing: 50,                        // Matches existing default
   enableHighlighting: true,               // Important for UX
   showNavigationHints: true,              // Helps users discover feature
-  enableDragDropToCanvas: true,           // Powerful workflow
   enableBatchOperations: true,             // Useful for power users
   enableSendTabToCanvas: true,
+  canvasOutputFolder: "/Sensemaking/",     // Default folder for new canvases
 };
 
 /**
@@ -116,20 +116,6 @@ export class OpenTabsCanvasSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('Enable tab drag-drop to canvas')
-      .setDesc(
-        'Hold Alt and drag open tabs onto canvas to create new file cards'
-      )
-      .addToggle(toggle =>
-        toggle
-          .setValue(this.plugin.settings.enableDragDropToCanvas)
-          .onChange(async (value) => {
-            this.plugin.settings.enableDragDropToCanvas = value;
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
       .setName('Enable batch file operations')
       .setDesc(
         'Right-click canvas to see menu options for opening all or selected ' +
@@ -177,6 +163,25 @@ export class OpenTabsCanvasSettingTab extends PluginSettingTab {
           .setDynamicTooltip()
           .onChange(async (value) => {
             this.plugin.settings.cardSpacing = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Canvas output folder")
+      .setDesc("Default folder for new canvases (supports nested paths like /Projects/Canvases/)",)
+      .addText(text =>
+        text
+          .setPlaceholder("/Sensemaking/")
+          .setValue(this.plugin.settings.canvasOutputFolder)
+          .onChange(async (value) => {
+            // Normalize path: ensure starts with / and doesn't end with /
+            const normalized = value.startsWith("/") ? value : "/" + value;
+            const trimmed = normalized.endsWith("/") && normalized.length > 1 
+              ? normalized.slice(0, -1) 
+              : normalized;
+            
+            this.plugin.settings.canvasOutputFolder = trimmed;
             await this.plugin.saveSettings();
           })
       );

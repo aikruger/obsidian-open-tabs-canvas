@@ -79,6 +79,26 @@ export class CanvasContextMenuHandler {
               );
             });
         });
+
+        // NEW: Copy all as wikilinks
+        menu.addItem((item) =>
+          item
+            .setTitle(`Copy all ${allFileNodes.length} as wikilinks`)
+            .setIcon("copy")
+            .onClick(async () => {
+              await this.copyCardsAsWikilinks(allFileNodes, false);
+            })
+        );
+
+        // NEW: Copy all as vault links (with full paths)
+        menu.addItem((item) =>
+          item
+            .setTitle(`Copy all ${allFileNodes.length} as vault links`)
+            .setIcon("link")
+            .onClick(async () => {
+              await this.copyCardsAsVaultLinks(allFileNodes);
+            })
+        );
       }
 
       // ─────────────────────────────────────────────────────────────
@@ -105,6 +125,26 @@ export class CanvasContextMenuHandler {
               );
             });
         });
+
+        // NEW: Copy selected as wikilinks
+        menu.addItem((item) =>
+          item
+            .setTitle(`Copy ${selectedFileNodes.length} selected as wikilinks`)
+            .setIcon("copy")
+            .onClick(async () => {
+              await this.copyCardsAsWikilinks(selectedFileNodes, false);
+            })
+        );
+
+        // NEW: Copy selected as vault links
+        menu.addItem((item) =>
+          item
+            .setTitle(`Copy ${selectedFileNodes.length} selected as vault links`)
+            .setIcon("link")
+            .onClick(async () => {
+              await this.copyCardsAsVaultLinks(selectedFileNodes);
+            })
+        );
       }
 
       // Add separator if we have file options
@@ -290,6 +330,98 @@ Selected: ${selectedFileNodes.length}
 
     new Notice(`Opened ${successCount}/${fileNodes.length} files in background`);
     console.log(`[Tabs to Canvas] Batch operation complete: ${successCount} files opened`);
+  }
+
+  /**
+   * Copy file cards as wikilinks to clipboard
+   * Format: [[filename]] or [[filename|display name]]
+   * 
+   * @param fileNodes - Array of file objects from canvas
+   * @param includeAlias - Whether to include display names as aliases
+   */
+  async copyCardsAsWikilinks(
+    fileNodes: Array<{ file: TFile; nodeView?: any }>,
+    includeAlias: boolean = false
+  ): Promise<void> {
+    if (fileNodes.length === 0) {
+      new Notice("No files to copy");
+      return;
+    }
+
+    try {
+      // Generate wikilinks
+      const wikilinks = fileNodes
+        .map((item) => {
+          const file = item.file;
+          if (!file || !file.basename) {
+            console.warn("[Copy Wikilinks] Skipping file without basename");
+            return null;
+          }
+          
+          // Format: [[basename]] or [[basename|display name]]
+          if (includeAlias && file.name !== file.basename) {
+            return `[[${file.basename}|${file.name}]]`;
+          }
+          return `[[${file.basename}]]`;
+        })
+        .filter((link) => link !== null)
+        .join("\n");
+
+      // Copy to clipboard
+      await navigator.clipboard.writeText(wikilinks);
+
+      // User feedback
+      new Notice(
+        `✓ Copied ${fileNodes.length} wikilink${fileNodes.length !== 1 ? "s" : ""} to clipboard`
+      );
+      
+      console.log(
+        `[Open Tabs Canvas] Copied ${fileNodes.length} wikilinks to clipboard:\n${wikilinks}`
+      );
+    } catch (error) {
+      console.error("[Open Tabs Canvas] Failed to copy wikilinks:", error);
+      new Notice("Failed to copy to clipboard. Check console for details.");
+    }
+  }
+
+  /**
+   * Copy with Obsidian vault link format (includes full paths)
+   * For cross-vault compatibility or disambiguation
+   */
+  async copyCardsAsVaultLinks(
+    fileNodes: Array<{ file: TFile; nodeView?: any }>
+  ): Promise<void> {
+    if (fileNodes.length === 0) {
+      new Notice("No files to copy");
+      return;
+    }
+
+    try {
+      // Generate vault-compatible links with full paths
+      const links = fileNodes
+        .map((item) => {
+          const file = item.file;
+          if (!file) return null;
+          
+          // Obsidian vault link: [[path/to/file|display name]]
+          return `[[${file.path}|${file.basename}]]`;
+        })
+        .filter((link) => link !== null)
+        .join("\n");
+
+      await navigator.clipboard.writeText(links);
+
+      new Notice(
+        `✓ Copied ${fileNodes.length} vault link${fileNodes.length !== 1 ? "s" : ""} to clipboard`
+      );
+      
+      console.log(
+        `[Open Tabs Canvas] Copied ${fileNodes.length} vault links`
+      );
+    } catch (error) {
+      console.error("[Open Tabs Canvas] Failed to copy vault links:", error);
+      new Notice("Failed to copy to clipboard. Check console for details.");
+    }
   }
 
   /**
