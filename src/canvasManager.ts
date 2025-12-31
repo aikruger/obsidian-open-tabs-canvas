@@ -23,8 +23,29 @@ export default class CanvasManager {
     }
 
     console.log(`[Open Tabs Canvas] Creating canvas for ${tabs.length} tabs`);
+    
+    // Get output folder from settings
+    const outputFolder = this.plugin.settings.canvasOutputFolder || "/Sensemaking/";
+
+    // Ensure folder exists
+    const folderExists = this.app.vault.getAbstractFileByPath(outputFolder);
+    if (!folderExists) {
+      try {
+        await this.app.vault.createFolder(outputFolder);
+        console.log(`[Open Tabs Canvas] Created output folder: ${outputFolder}`);
+      } catch (error) {
+        console.error(`[Open Tabs Canvas] Failed to create folder: ${outputFolder}`, error);
+        new import_obsidian2(`Could not create folder: ${outputFolder}. Canvas will be created in vault root.`);
+      }
+    }
+
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const fileName = `Open Tabs Canvas - ${timestamp}.canvas`;
+
+    // Build full path
+    const filePath = outputFolder === "/" 
+      ? fileName 
+      : `${outputFolder}/${fileName}`.replace(/\/+/g, "/"); // Ensure no double slashes
 
     // Step 1: Create empty canvas file
     const emptyStructure = JSON.stringify(
@@ -37,8 +58,15 @@ export default class CanvasManager {
       2
     );
 
-    const newFile = await this.app.vault.create(fileName, emptyStructure);
-    console.log("[Open Tabs Canvas] Empty canvas file created");
+    let newFile: TFile;
+    try {
+      newFile = await this.app.vault.create(filePath, emptyStructure);
+      console.log(`[Open Tabs Canvas] Canvas created at: ${newFile.path}`);
+    } catch (error) {
+      console.error(`[Open Tabs Canvas] Failed to create canvas at ${filePath}:`, error);
+      new import_obsidian2(`Failed to create canvas in folder ${outputFolder}. Check console.`);
+      throw error;
+    }
 
     // Step 2: Open canvas in new tab (background - no focus)
     let leaf: any;
