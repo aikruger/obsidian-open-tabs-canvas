@@ -7,81 +7,13 @@ import { CanvasContextMenuHandler } from './canvasContextMenu';
 import { CanvasSelectorModal } from './canvasSelector';
 import { CanvasInfoTracker } from './canvasInfo';
 
+import { getSelectedCanvasFileTarget } from "./canvasSelection";
+import { openInHoverEditor } from "./hoverEditorIntegration";
 
 
-export interface NodeTargetResult {
-	success: boolean;
-	file?: TFile;
-	subpath?: string;
-	nodeId?: string;
-	canvasPath?: string;
-	reason?: string;
-	selectedItemCount?: number;
-}
+
+
 export default class OpenTabsCanvasPlugin extends Plugin {
-	/**
-	 * Helper to get exactly one selected file node from the active canvas
-	 */
-	private getSelectedCanvasFileTarget(): NodeTargetResult {
-		const activeLeaf = this.app.workspace.activeLeaf;
-		if (!activeLeaf?.view || activeLeaf.view.getViewType() !== 'canvas') {
-			return { success: false, reason: 'No canvas active' };
-		}
-
-		const canvasView = activeLeaf.view as CanvasView;
-		const canvas = canvasView.canvas;
-		if (!canvas) {
-			return { success: false, reason: 'Canvas not initialized' };
-		}
-
-		const canvasPath = (canvasView as any).file?.path;
-
-		// Extract selected nodes
-		const selectedNodes: any[] = [];
-		if (canvas.nodes && canvas.nodes.size > 0) {
-			canvas.nodes.forEach((nodeView: any) => {
-				const nodeElement = nodeView.nodeEl;
-				if (nodeElement?.classList?.contains('is-selected')) {
-					selectedNodes.push(nodeView);
-				}
-			});
-		}
-
-		if (selectedNodes.length !== 1) {
-			return { success: false, reason: 'Selection is not exactly one item', selectedItemCount: selectedNodes.length };
-		}
-
-		const nodeView = selectedNodes[0];
-
-		// Try to extract file path
-		const raw = nodeView.file || nodeView.data?.file || nodeView.getData?.().file;
-		let filePath = null;
-		if (typeof raw === 'string') {
-			filePath = raw;
-		} else if (raw && typeof raw === 'object' && typeof raw.path === 'string') {
-			filePath = raw.path;
-		}
-
-		if (!filePath) {
-			return { success: false, reason: 'Selected item is not a file node' };
-		}
-
-		const file = this.app.vault.getAbstractFileByPath(filePath);
-		if (!file || !(file instanceof TFile)) {
-			return { success: false, reason: 'File not found in vault' };
-		}
-
-		const subpath = nodeView.subpath || nodeView.data?.subpath || nodeView.getData?.().subpath || undefined;
-
-		return {
-			success: true,
-			file,
-			subpath,
-			nodeId: nodeView.id || nodeView.data?.id,
-			canvasPath
-		};
-	}
-
 	settings: OpenTabsCanvasSettings;
 	private tabTracker!: TabTracker;
 	private canvasManager!: CanvasManager;
@@ -423,25 +355,46 @@ Selected cards: ${selectedFiles.length}
 			id: "canvas-open-selected-file-in-hover-editor",
 			name: "Canvas: Open selected file node in Hover Editor",
 			checkCallback: (checking: boolean) => {
-				const target = this.getSelectedCanvasFileTarget();
+				const result = getSelectedCanvasFileTarget(this.app);
 
 				if (checking) {
-					return target.success;
+					return result.success;
 				}
 
-				if (!target.success) {
-					// We only get here if they somehow triggered it via palette when it should be disabled,
-					// or hotkey racing condition.
+				if (!result.success) {
 					const LOG_PREFIX = "[Open Tabs Canvas][Hover Editor]";
 					console.warn(`${LOG_PREFIX} Selection rejected`, {
-						reason: target.reason,
-						selectedItemCount: target.selectedItemCount,
+						reason: result.reason,
+						selectedItemCount: result.diagnostics.modelSelectionCount,
+						selectionSource: result.diagnostics.selectionSource,
+						canvasPath: (this.app.workspace.activeLeaf?.view as any)?.file?.path,
 					});
 					return false;
 				}
 
+				const { target, diagnostics } = result;
+
+				console.log("[Open Tabs Canvas][Hover Editor] Selection inspected", {
+				  canvasPath: target.canvasPath,
+				  selectionSource: diagnostics.selectionSource,
+				  selectionShape: diagnostics.selectionShape,
+				  modelSelectionCount: diagnostics.modelSelectionCount,
+				  canvasNodeCount: diagnostics.canvasNodeCount,
+				  selectedNodeIds: diagnostics.selectedNodeIds,
+				  domSelectedNodeCount: diagnostics.domSelectedNodeCount,
+				});
+
+				console.log("[Open Tabs Canvas][Hover Editor] Selected target resolved", {
+					canvasPath: target.canvasPath,
+					nodeId: target.nodeId,
+					filePath: target.file.path,
+					subpath: target.subpath,
+				});
+
 				// Execute
-				this.openInHoverEditor(target);
+				openInHoverEditor(this.app, result).catch((e) => {
+					console.error("[Open Tabs Canvas][Hover Editor] Unhandled error in execution", e);
+				});
 				return true;
 			}
 		});
@@ -515,75 +468,6 @@ Selected cards: ${selectedFiles.length}
 	}
 
 
-	/**
-	 * Opens the selected file node in a Hover Editor
-	 */
-	private async openInHoverEditor(target: NodeTargetResult): Promise<void> {
-		const LOG_PREFIX = "[Open Tabs Canvas][Hover Editor]";
-
-		console.log(`${LOG_PREFIX} Command invoked`);
-
-		// Get hover editor plugin
-		const hoverPlugin = (this.app as any).plugins?.plugins?.['obsidian-hover-editor'];
-
-		if (!hoverPlugin || typeof hoverPlugin.spawnPopover !== 'function') {
-			console.warn(`${LOG_PREFIX} Hover Editor unavailable`);
-			new Notice("Install and enable Hover Editor to use this command.");
-			return;
-		}
-
-		console.log(`${LOG_PREFIX} Selected target resolved`, {
-			canvasPath: target.canvasPath,
-			nodeId: target.nodeId,
-			filePath: target.file?.path,
-			subpath: target.subpath,
-		});
-
-		let hoverLeaf: any = null;
-		let popoverShown = false;
-
-		try {
-			// Find initiating element, which is the active leaf container or document.body
-			const activeLeaf = this.app.workspace.activeLeaf;
-			const initiatingElement = activeLeaf ? activeLeaf.view.containerEl : document.body;
-
-			// Call spawnPopover
-			hoverLeaf = hoverPlugin.spawnPopover(initiatingElement, () => {
-				popoverShown = true;
-				// In case openFile finishes before this callback (rare, but possible)
-				// we don't strictly need to do focus here if we handle it below, but keeping callback safe.
-			});
-
-			// Setup state
-			const eState = target.subpath ? { subpath: target.subpath } : undefined;
-
-			// Wait for openFile to complete
-			if (target.file) {
-				await hoverLeaf.openFile(target.file, { eState, active: true });
-			}
-
-			console.log(`${LOG_PREFIX} File opened`, {
-				filePath: target.file?.path,
-			});
-
-			// Optional: ensure focus after it has been shown
-			if (popoverShown && hoverLeaf.view) {
-				this.app.workspace.setActiveLeaf(hoverLeaf, { focus: true });
-			}
-
-		} catch (error) {
-			console.error(`${LOG_PREFIX} Opening failed`, {
-				phase: hoverLeaf ? 'openFile' : 'spawnPopover',
-				filePath: target.file?.path,
-				error,
-			});
-
-			if (hoverLeaf) {
-				// Clean up newly created leaf if opening failed
-				hoverLeaf.detach();
-			}
-		}
-	}
 	private generateUUID(): string {
 		return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
 			const r = Math.random() * 16 | 0;
